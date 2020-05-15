@@ -34,6 +34,5 @@ COPY --from=builder /tmp/terraformer/terraform /bin/terraform
 COPY --from=builder /tmp/terraformer/terraform-provider* /terraform-providers/
 
 ADD ./terraform.sh /terraform.sh
-ADD ./terraformer.sh /terraformer.sh
 
-CMD exec /terraformer.sh
+CMD exec /terraform.sh

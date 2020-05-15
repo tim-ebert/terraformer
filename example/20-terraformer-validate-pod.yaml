@@ -25,7 +25,7 @@ spec:
     image: eu.gcr.io/gardener-project/gardener/terraformer:latest
     imagePullPolicy: IfNotPresent
     command:
-    - /terraformer.sh
+    - /terraform.sh
     - validate
     env:
     - name: TF_CONFIGURATION_CONFIG_MAP_NAME
