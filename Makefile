@@ -12,8 +12,64 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-IMAGE_REPOSITORY := eu.gcr.io/gardener-project/gardener/terraformer
-IMAGE_TAG        := $(shell cat VERSION)
+NAME                 := terraformer
+IMAGE_REPOSITORY     := eu.gcr.io/gardener-project/gardener/$(NAME)
+IMAGE_REPOSITORY_DEV := $(IMAGE_REPOSITORY)/dev
+REPO_ROOT            := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+VERSION              := $(shell cat "$(REPO_ROOT)/VERSION")
+IMAGE_TAG            := $(VERSION)
+
+#########################################
+# Rules for local development scenarios #
+#########################################
+
+COMMAND := apply
+.PHONY: run
+run:
+	# running `go run ./cmd/terraformer $(COMMAND)`
+	go run ./cmd/terraformer $(COMMAND) \
+       --zap-devel \
+       --configuration-configmap-name=example.infra.tf-config \
+       --state-configmap-name=example.infra.tf-state \
+       --variables-secret-name=example.infra.tf-vars
+
+.PHONY: start
+start: dev-kubeconfig docker-dev-image
+	# starting dev container
+	@docker run -it -v $(shell go env GOCACHE):/root/.cache/go-build \
+       -v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
+       -e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
+       -e NAMESPACE=${NAMESPACE} \
+       $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
+       make run COMMAND=$(COMMAND)
+
+.PHONY: start-dev-container
+start-dev-container: dev-kubeconfig docker-dev-image
+	# starting dev container
+	@docker run -it -v $(shell go env GOCACHE):/root/.cache/go-build \
+       -v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
+       -e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
+       -e NAMESPACE=${NAMESPACE} \
+       $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
+       bash
+
+.PHONY: docker-dev-image
+docker-dev-image:
+	@DOCKER_BUILDKIT=1 docker build -t $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) --target dev --build-arg BUILDKIT_INLINE_CACHE=1 .
+
+.PHONY: dev-kubeconfig
+dev-kubeconfig:
+	@mkdir -p dev
+	@kubectl config view --raw | sed 's/localhost/host.docker.internal/' > dev/kubeconfig.yaml
+
+#################################################################
+# Rules related to binary build, Docker image build and release #
+#################################################################
+
+.PHONY: install
+install:
+	@LD_FLAGS="-w -X github.com/gardener/$(NAME)/pkg/version.Version=$(VERSION)" \
+		$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/install.sh ./cmd/...
 
 .PHONY: build
 build: docker-image bundle-clean
@@ -23,7 +79,7 @@ release: build docker-login docker-push
 
 .PHONY: docker-image
 docker-image:
-	@docker build -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) --rm .
+	@docker build -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) --rm --target terraformer .
 
 .PHONY: docker-login
 docker-login:
@@ -40,3 +96,58 @@ bundle-clean:
 	@rm -f terraform
 	@rm -f terraform*.zip
 	@rm -rf bin/
+
+#####################################################################
+# Rules for verification, formatting, linting, testing and cleaning #
+#####################################################################
+
+.PHONY: install-requirements
+install-requirements:
+	@go install -mod=vendor $(REPO_ROOT)/vendor/github.com/onsi/ginkgo/ginkgo
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/install-requirements.sh
+
+.PHONY: revendor
+revendor:
+	@GO111MODULE=on go mod vendor
+	@GO111MODULE=on go mod tidy
+	@chmod +x $(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/*
+	@chmod +x $(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/.ci/*
+	@$(REPO_ROOT)/hack/update-github-templates.sh
+
+.PHONY: clean
+clean: bundle-clean
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/clean.sh ./cmd/... ./pkg/...
+
+.PHONY: check-generate
+check-generate:
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/check-generate.sh $(REPO_ROOT)
+
+.PHONY: check
+check:
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/check.sh --golangci-lint-config=./.golangci.yaml ./cmd/... ./pkg/...
+
+.PHONY: generate
+generate:
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/generate.sh ./cmd/... ./pkg/...
+
+.PHONY: format
+format:
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/format.sh ./cmd ./pkg
+
+.PHONY: test
+test:
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/test.sh -r ./cmd/... ./pkg/...
+
+.PHONY: test-cov
+test-cov:
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/test-cover.sh -r ./cmd/... ./pkg/...
+
+.PHONY: test-clean
+test-clean:
+	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/test-cover-clean.sh
+
+.PHONY: verify
+verify: check format test
+
+.PHONY: verify-extended
+verify-extended: install-requirements check-generate check format test-cov test-clean
