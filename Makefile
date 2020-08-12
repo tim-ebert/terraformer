@@ -24,11 +24,12 @@ IMAGE_TAG            := $(VERSION)
 #########################################
 
 COMMAND := apply
+ZAP_DEVEL := true
 .PHONY: run
 run:
 	# running `go run ./cmd/terraformer $(COMMAND)`
 	go run ./cmd/terraformer $(COMMAND) \
-       --zap-devel \
+       --zap-devel=$(ZAP_DEVEL) \
        --configuration-configmap-name=example.infra.tf-config \
        --state-configmap-name=example.infra.tf-state \
        --variables-secret-name=example.infra.tf-vars
@@ -41,7 +42,7 @@ start: dev-kubeconfig docker-dev-image
        -e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
        -e NAMESPACE=${NAMESPACE} \
        $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
-       make run COMMAND=$(COMMAND)
+       make run COMMAND=$(COMMAND) ZAP_DEVEL=$(ZAP_DEVEL)
 
 .PHONY: start-dev-container
 start-dev-container: dev-kubeconfig docker-dev-image

@@ -99,6 +99,8 @@ func addSubcommand(cmd *cobra.Command, command terraformer.Command, opts *terraf
 
 			// don't output usage on further errors raised during terraform execution
 			cmd.SilenceUsage = true
+			// further errors will be logged properly, don't duplicate
+			cmd.SilenceErrors = true
 
 			return terraformer.NewTerraformer(opts.Completed()).Run(command)
 		},

@@ -59,6 +59,10 @@ func (t *Terraformer) execute(command Command) error {
 		cancel()
 	}()
 
+	if err := t.ensureTFDirs(); err != nil {
+		return errors.Wrap(err, "failed to create needed directories")
+	}
+
 	if err := t.fetchConfig(ctx); err != nil {
 		return errors.Wrap(err, "failed to fetch terraform config")
 	}
@@ -94,6 +98,15 @@ func (t *Terraformer) execute(command Command) error {
 }
 
 func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan struct{}) error {
+	// TODO: figure out, what to do with these commands:
+	//# required to initialize the provider plugins
+	//terraform init -plugin-dir="$DIR_PROVIDERS" "$DIR_CONFIGURATION"
+	//# workaround for `terraform init`; required to make `terraform validate` work (plugin_path file ignored?)
+	//cp -r "$DIR_PROVIDERS"/* "$DIR_PLUGIN_BINARIES"/.
+
+
+	log := t.stepLogger("executeTerraform")
+
 	args := []string{string(command), "-var-file=" + tfVarsPath}
 
 	switch command {
@@ -102,14 +115,15 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 			"-detailed-exitcode", "-state="+tfStateInPath)
 	case Apply:
 		args = append(args, "-parallelism=4", "-auto-approve",
-			"-state="+tfStateInPath, "-state-out="+tfStateOutPath, "-var-file="+tfVarsPath)
+			"-state="+tfStateInPath, "-state-out="+tfStateOutPath)
 	case Destroy:
 		args = append(args, "-parallelism=4", "-auto-approve",
-			"-state="+tfStateInPath, "-state-out="+tfStateOutPath, "-var-file="+tfVarsPath)
+			"-state="+tfStateInPath, "-state-out="+tfStateOutPath)
 	}
 
 	args = append(args, tfConfigDir)
 
+	log.Info("executing terraform with args", "args", args)
 	tfCmd := exec.Command("terraform", args...)
 	tfCmd.Stdout = os.Stdout
 	tfCmd.Stderr = os.Stderr
