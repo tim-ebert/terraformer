@@ -25,6 +25,8 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/gardener/terraformer/pkg/utils"
 )
 
 // NewTerraformer creates a new Terraformer
@@ -42,7 +44,7 @@ func (t *Terraformer) Run(command Command) error {
 
 func (t *Terraformer) execute(command Command) error {
 	if c, err := client.New(t.config.RESTConfig, client.Options{}); err != nil {
-		return errors.Wrap(err, "failed to create kubernetes client")
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
 	} else {
 		t.client = c
 	}
@@ -60,11 +62,11 @@ func (t *Terraformer) execute(command Command) error {
 	}()
 
 	if err := t.ensureTFDirs(); err != nil {
-		return errors.Wrap(err, "failed to create needed directories")
+		return fmt.Errorf("failed to create needed directories: %w", err)
 	}
 
 	if err := t.fetchConfig(ctx); err != nil {
-		return errors.Wrap(err, "failed to fetch terraform config")
+		return err
 	}
 
 	fileWatcherCtx, fileWatcherCancel := context.WithCancel(ctx)
@@ -72,7 +74,7 @@ func (t *Terraformer) execute(command Command) error {
 
 	var fileWatcherWaitGroup sync.WaitGroup
 	if err := t.startFileWatcher(fileWatcherCtx, &fileWatcherWaitGroup); err != nil {
-		return errors.Wrap(err, "failed to start state file watcher")
+		return fmt.Errorf("failed to start state file watcher: %w", err)
 	}
 
 	if err := t.executeTerraform(command, intCh, killCh); err != nil {
@@ -103,7 +105,6 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 	//terraform init -plugin-dir="$DIR_PROVIDERS" "$DIR_CONFIGURATION"
 	//# workaround for `terraform init`; required to make `terraform validate` work (plugin_path file ignored?)
 	//cp -r "$DIR_PROVIDERS"/* "$DIR_PLUGIN_BINARIES"/.
-
 
 	log := t.stepLogger("executeTerraform")
 
@@ -151,7 +152,7 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 	}()
 
 	if err := tfCmd.Wait(); err != nil {
-		return WithExitCode{exitCode: tfCmd.ProcessState.ExitCode(), underlying: err}
+		return utils.WithExitCode{Code: tfCmd.ProcessState.ExitCode(), Underlying: err}
 	}
 
 	return nil

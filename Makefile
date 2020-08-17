@@ -105,7 +105,7 @@ bundle-clean:
 .PHONY: install-requirements
 install-requirements:
 	@go install -mod=vendor $(REPO_ROOT)/vendor/github.com/onsi/ginkgo/ginkgo
-	@$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/install-requirements.sh
+	@GO111MODULE=off go get golang.org/x/tools/cmd/goimports
 
 .PHONY: revendor
 revendor:

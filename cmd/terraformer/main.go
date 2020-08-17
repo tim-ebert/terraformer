@@ -24,7 +24,7 @@ import (
 	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/gardener/terraformer/cmd/terraformer/app"
-	"github.com/gardener/terraformer/pkg/terraformer"
+	"github.com/gardener/terraformer/pkg/utils"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 		}
 
 		// set exit code from terraform
-		withExitCode := &terraformer.WithExitCode{}
+		withExitCode := &utils.WithExitCode{}
 		if errors.As(err, withExitCode) {
 			if exitCode := withExitCode.ExitCode(); exitCode > 0 {
 				os.Exit(exitCode)

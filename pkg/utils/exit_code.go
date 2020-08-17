@@ -12,25 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package terraformer
+package utils
 
 import (
 	"fmt"
 )
 
 type WithExitCode struct {
-	exitCode   int
-	underlying error
+	Code       int
+	Underlying error
 }
 
 func (w WithExitCode) ExitCode() int {
-	return w.exitCode
+	return w.Code
 }
 
 func (w WithExitCode) Error() string {
-	return fmt.Sprintf("terraform command failed with exit code %d: %v", w.exitCode, w.underlying)
+	return fmt.Sprintf("terraform command failed with exit code %d: %v", w.Code, w.Underlying)
 }
 
 func (w WithExitCode) Unwrap() error {
-	return w.underlying
+	return w.Underlying
 }

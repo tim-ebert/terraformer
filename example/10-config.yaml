@@ -51,10 +51,7 @@ metadata:
   name: example.infra.tf-vars
   namespace: default
 type: Opaque
-data:
+stringData:
   terraform.tfvars: |
-    base64(
-      ACCESS_KEY_ID = "AAAAAAAAAAAAAAAAAAAA"
-
-      SECRET_ACCESS_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    )
+    ACCESS_KEY_ID = "AAAAAAAAAAAAAAAAAAAA"
+    SECRET_ACCESS_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"

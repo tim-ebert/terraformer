@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/spf13/pflag"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
@@ -83,6 +84,10 @@ func (o *Options) addDefaults() {
 
 	if len(o.namespace) == 0 {
 		o.namespace = os.Getenv("NAMESPACE")
+	}
+
+	if len(o.namespace) == 0 {
+		o.namespace = corev1.NamespaceDefault
 	}
 }
 
