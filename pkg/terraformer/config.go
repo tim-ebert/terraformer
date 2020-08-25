@@ -44,7 +44,7 @@ const (
 	tfProvidersDir = "/terraform-providers"
 
 	// TODO: still needed?
-	tfPluginsDir   = ".terraform/plugins/linux_amd64"
+	tfPluginsDir = ".terraform/plugins/linux_amd64"
 
 	tfConfigMainKey = "main.tf"
 	tfConfigVarsKey = "variables.tf"
@@ -170,7 +170,12 @@ func fetchObject(ctx context.Context, log logr.Logger, c client.Client, ns, name
 
 func (t *Terraformer) storeState(ctx context.Context) error {
 	log := t.stepLogger("storeState")
-	return storeSecret(ctx, log, t.client, t.config.Namespace, t.config.StateConfigMapName, tfStateOutDir, tfStateKey)
+	return storeConfigMap(ctx, log, t.client, t.config.Namespace, t.config.StateConfigMapName, tfStateOutDir, tfStateKey)
+}
+
+func storeConfigMap(ctx context.Context, log logr.Logger, c client.Client, ns, name string, dir string, dataKeys ...string) error {
+	return storeObject(ctx, log.WithValues("kind", "ConfigMap"), c,
+		&configMapStore{&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}}, dir, dataKeys...)
 }
 
 func storeSecret(ctx context.Context, log logr.Logger, c client.Client, ns, name string, dir string, dataKeys ...string) error {
@@ -187,7 +192,7 @@ func storeObject(ctx context.Context, log logr.Logger, c client.Client, obj stor
 
 	// prepare individual mutate functions for each key to store, so we don't need to read every file again when retrying
 	// because of a conflict
-	mutateFuncs := make([]func(), len(dataKeys))
+	mutateFuncs := make([]func(), 0, len(dataKeys))
 
 	for _, dataKey := range dataKeys {
 		if err := func() error {
@@ -198,7 +203,7 @@ func storeObject(ctx context.Context, log logr.Logger, c client.Client, obj stor
 			defer file.Close()
 			log.V(1).Info("copying file contents into object", "dataKey", dataKey, "file", file.Name())
 
-			var buf *bytes.Buffer
+			buf := &bytes.Buffer{}
 			_, err = io.Copy(buf, file)
 			if err != nil {
 				return err

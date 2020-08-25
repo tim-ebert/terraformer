@@ -22,8 +22,9 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/pkg/errors"
+	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -50,7 +51,7 @@ func (t *Terraformer) execute(command Command) error {
 		t.client = c
 	}
 
-	intCh, killCh := setupSignalChannels()
+	intCh, killCh := setupSignalChannels(t.log)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -58,6 +59,8 @@ func (t *Terraformer) execute(command Command) error {
 		select {
 		case <-intCh:
 		case <-killCh:
+		case <-ctx.Done():
+			return
 		}
 		cancel()
 	}()
@@ -69,6 +72,20 @@ func (t *Terraformer) execute(command Command) error {
 	if err := t.fetchConfig(ctx); err != nil {
 		return err
 	}
+
+	// always try to store state once again before exiting
+	defer func() {
+		log := t.stepLogger("storeState")
+		log.Info("storing state before exiting")
+
+		storeCtx, storeCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer storeCancel()
+
+		if err := t.storeState(storeCtx); err != nil {
+			log.Error(err, "failed to store terraform state")
+		}
+		log.Info("successfully stored terraform state")
+	}()
 
 	fileWatcherCtx, fileWatcherCancel := context.WithCancel(ctx)
 	defer fileWatcherCancel()
@@ -95,11 +112,6 @@ func (t *Terraformer) execute(command Command) error {
 	// stop file watcher and wait for it to be done before storing state explicitly
 	fileWatcherCancel()
 	fileWatcherWaitGroup.Wait()
-
-	// TODO: ctx might already be cancelled
-	if err := t.storeState(ctx); err != nil {
-		return errors.Wrap(err, "failed to store terraform state")
-	}
 
 	return nil
 }
@@ -149,32 +161,32 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 	// setup signal handler relaying signals to terraform process
 	go func() {
 		defer wg.Done()
-		for {
-			select {
-			case <-doneCh:
-				return
-			case <-intCh:
-				log.V(1).Info("relaying SIGINT to terraform process")
-				if err := tfCmd.Process.Signal(os.Interrupt); err != nil {
-					log.Error(err, "failed to relay SIGINT to terraform process")
-				}
-			case <-killCh:
-				log.V(1).Info("relaying SIGKILL to terraform process")
-				if err := tfCmd.Process.Signal(os.Kill); err != nil {
-					log.Error(err, "failed to relay SIGKILL to terraform process")
-				}
+		select {
+		case <-doneCh:
+			return
+		case <-intCh:
+			log.V(1).Info("relaying SIGINT to terraform process")
+			if err := tfCmd.Process.Signal(os.Interrupt); err != nil {
+				log.Error(err, "failed to relay SIGINT to terraform process")
+			}
+		case <-killCh:
+			log.V(1).Info("relaying SIGKILL to terraform process")
+			if err := tfCmd.Process.Signal(os.Kill); err != nil {
+				log.Error(err, "failed to relay SIGKILL to terraform process")
 			}
 		}
 	}()
 
 	if err := tfCmd.Wait(); err != nil {
+		log.Error(err, "terraform process finished with error")
 		return utils.WithExitCode{Code: tfCmd.ProcessState.ExitCode(), Underlying: err}
 	}
 
+	log.Info("terraform process finished successfully")
 	return nil
 }
 
-func setupSignalChannels() (intCh, killCh <-chan struct{}) {
+func setupSignalChannels(log logr.Logger) (intCh, killCh <-chan struct{}) {
 	intOutCh, killOutCh := make(chan struct{}), make(chan struct{})
 	sigintCh, sigkillCh := make(chan os.Signal, 1), make(chan os.Signal, 1)
 	signal.Notify(sigintCh, os.Interrupt)
@@ -182,13 +194,13 @@ func setupSignalChannels() (intCh, killCh <-chan struct{}) {
 
 	go func() {
 		<-sigintCh
-		fmt.Println("SIGINT received")
+		log.Info("SIGINT received")
 		close(intOutCh)
 	}()
 
 	go func() {
 		<-sigkillCh
-		fmt.Println("SIGKILL received")
+		log.Info("SIGKILL received")
 		close(killOutCh)
 	}()
 
