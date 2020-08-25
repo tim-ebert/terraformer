@@ -41,6 +41,7 @@ start: dev-kubeconfig docker-dev-image
        -v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
        -e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
        -e NAMESPACE=${NAMESPACE} \
+       --name terraformer-dev --rm \
        $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
        make run COMMAND=$(COMMAND) ZAP_DEVEL=$(ZAP_DEVEL)
 
@@ -51,6 +52,7 @@ start-dev-container: dev-kubeconfig docker-dev-image
        -v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
        -e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
        -e NAMESPACE=${NAMESPACE} \
+       --name terraformer-dev --rm \
        $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
        bash
 

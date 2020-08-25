@@ -138,21 +138,32 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 		return err
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+	// wait for signal handler goroutine to finish properly before returning
+	defer wg.Wait()
+
 	doneCh := make(chan struct{})
 	defer close(doneCh)
 
 	// setup signal handler relaying signals to terraform process
 	go func() {
-		select {
-		case <-intCh:
-			if err := tfCmd.Process.Signal(os.Interrupt); err != nil {
-				fmt.Printf("failed to relay SIGINT to terraform process: %v\n", err)
+		defer wg.Done()
+		for {
+			select {
+			case <-doneCh:
+				return
+			case <-intCh:
+				log.V(1).Info("relaying SIGINT to terraform process")
+				if err := tfCmd.Process.Signal(os.Interrupt); err != nil {
+					log.Error(err, "failed to relay SIGINT to terraform process")
+				}
+			case <-killCh:
+				log.V(1).Info("relaying SIGKILL to terraform process")
+				if err := tfCmd.Process.Signal(os.Kill); err != nil {
+					log.Error(err, "failed to relay SIGKILL to terraform process")
+				}
 			}
-		case <-killCh:
-			if err := tfCmd.Process.Signal(os.Kill); err != nil {
-				fmt.Printf("failed to relay SIGKILL to terraform process: %v\n", err)
-			}
-		case <-doneCh:
 		}
 	}()
 
