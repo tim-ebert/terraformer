@@ -41,13 +41,17 @@ const (
 	tfVarsDir      = "/tfvars"
 	tfStateInDir   = "/tfstate"
 	tfStateOutDir  = "/tfstate-out"
-	tfProvidersDir = "/terraformer-providers"
+	tfProvidersDir = "/terraform-providers"
+
+	// TODO: still needed?
 	tfPluginsDir   = ".terraform/plugins/linux_amd64"
 
 	tfConfigMainKey = "main.tf"
 	tfConfigVarsKey = "variables.tf"
 	tfVarsKey       = "terraform.tfvars"
 	tfStateKey      = "terraform.tfstate"
+
+	terminationLogPath = corev1.TerminationMessagePathDefault
 )
 
 var (

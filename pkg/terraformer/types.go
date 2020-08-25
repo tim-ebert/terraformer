@@ -24,14 +24,16 @@ import (
 // Command is a terraform command
 type Command string
 
-// Supported terraform commands
+// known terraform commands
 const (
+	Init     Command = "init"
 	Apply    Command = "apply"
 	Destroy  Command = "destroy"
 	Validate Command = "validate"
 	Plan     Command = "plan"
 )
 
+// supported terraform commands, that can be run as `terraformer <command>`
 var SupportedCommands = map[Command]struct{}{
 	Apply:    {},
 	Destroy:  {},

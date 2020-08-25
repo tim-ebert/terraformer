@@ -3,6 +3,7 @@
 /tmp
 /local
 /dev
+.terraform
 
 *.coverprofile
 *.html

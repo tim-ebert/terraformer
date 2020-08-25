@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -77,6 +78,10 @@ func (t *Terraformer) execute(command Command) error {
 		return fmt.Errorf("failed to start state file watcher: %w", err)
 	}
 
+	if err := t.executeTerraform(Init, intCh, killCh); err != nil {
+		return fmt.Errorf("error executing terraform %s: %w", command, err)
+	}
+
 	if err := t.executeTerraform(command, intCh, killCh); err != nil {
 		return fmt.Errorf("error executing terraform %s: %w", command, err)
 	}
@@ -101,30 +106,30 @@ func (t *Terraformer) execute(command Command) error {
 
 func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan struct{}) error {
 	// TODO: figure out, what to do with these commands:
-	//# required to initialize the provider plugins
-	//terraform init -plugin-dir="$DIR_PROVIDERS" "$DIR_CONFIGURATION"
 	//# workaround for `terraform init`; required to make `terraform validate` work (plugin_path file ignored?)
 	//cp -r "$DIR_PROVIDERS"/* "$DIR_PLUGIN_BINARIES"/.
 
 	log := t.stepLogger("executeTerraform")
 
-	args := []string{string(command), "-var-file=" + tfVarsPath}
+	args := []string{string(command)}
 
 	switch command {
+	case Init:
+		args = append(args, "-plugin-dir="+tfProvidersDir)
 	case Plan:
-		args = append(args, "-parallelism=4",
+		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4",
 			"-detailed-exitcode", "-state="+tfStateInPath)
 	case Apply:
-		args = append(args, "-parallelism=4", "-auto-approve",
+		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4", "-auto-approve",
 			"-state="+tfStateInPath, "-state-out="+tfStateOutPath)
 	case Destroy:
-		args = append(args, "-parallelism=4", "-auto-approve",
+		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4", "-auto-approve",
 			"-state="+tfStateInPath, "-state-out="+tfStateOutPath)
 	}
 
 	args = append(args, tfConfigDir)
 
-	log.Info("executing terraform with args", "args", args)
+	log.Info("executing terraform with args", "args", strings.Join(args, " "))
 	tfCmd := exec.Command("terraform", args...)
 	tfCmd.Stdout = os.Stdout
 	tfCmd.Stderr = os.Stderr
