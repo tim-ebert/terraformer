@@ -16,6 +16,7 @@ package terraformer
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 
@@ -23,9 +24,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+type keyNotFoundError string
+
+func (k keyNotFoundError) Error() string {
+	return fmt.Sprintf("key %q not found", string(k))
+}
+
 type store interface {
 	Object() runtime.Object
-	Read(key string) io.Reader
+	Read(key string) (io.Reader, error)
 	Store(key string, value *bytes.Buffer)
 }
 
@@ -39,8 +46,13 @@ func (c *configMapStore) Object() runtime.Object {
 	return c.ConfigMap
 }
 
-func (c *configMapStore) Read(key string) io.Reader {
-	return strings.NewReader(c.Data[key])
+func (c *configMapStore) Read(key string) (io.Reader, error) {
+	data, ok := c.Data[key]
+	if !ok {
+		return nil, keyNotFoundError(key)
+	}
+
+	return strings.NewReader(data), nil
 }
 
 func (c *configMapStore) Store(key string, value *bytes.Buffer) {
@@ -61,8 +73,13 @@ func (s *secretStore) Object() runtime.Object {
 	return s.Secret
 }
 
-func (s *secretStore) Read(key string) io.Reader {
-	return bytes.NewReader(s.Data[key])
+func (s *secretStore) Read(key string) (io.Reader, error) {
+	data, ok := s.Data[key]
+	if !ok {
+		return nil, keyNotFoundError(key)
+	}
+
+	return bytes.NewReader(data), nil
 }
 
 func (s *secretStore) Store(key string, value *bytes.Buffer) {

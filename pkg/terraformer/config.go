@@ -17,6 +17,7 @@ package terraformer
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -40,8 +41,7 @@ import (
 const (
 	tfConfigDir    = "/tf"
 	tfVarsDir      = "/tfvars"
-	tfStateInDir   = "/tfstate"
-	tfStateOutDir  = "/tfstate-out"
+	tfStateDir     = "/tfstate"
 	tfProvidersDir = "/terraform-providers"
 
 	// TODO: still needed?
@@ -58,9 +58,8 @@ const (
 var (
 	//tfConfigMainPath = path.Join(tfConfigDir, tfConfigMainKey)
 	//tfConfigVarsPath = path.Join(tfConfigDir, tfConfigVarsKey)
-	tfVarsPath     = path.Join(tfVarsDir, tfVarsKey)
-	tfStateInPath  = path.Join(tfStateInDir, tfStateKey)
-	tfStateOutPath = path.Join(tfStateOutDir, tfStateKey)
+	tfVarsPath  = path.Join(tfVarsDir, tfVarsKey)
+	tfStatePath = path.Join(tfStateDir, tfStateKey)
 )
 
 func (t *Terraformer) ensureTFDirs() error {
@@ -70,8 +69,7 @@ func (t *Terraformer) ensureTFDirs() error {
 	for _, dir := range []string{
 		tfConfigDir,
 		tfVarsDir,
-		tfStateInDir,
-		tfStateOutDir,
+		tfStateDir,
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
@@ -100,7 +98,7 @@ func (t *Terraformer) fetchConfig(ctx context.Context) error {
 	})
 	wg.Start(func() {
 		errCh <- fetchConfigMap(ctx, log, t.client, t.config.Namespace, t.config.StateConfigMapName, true,
-			tfStateInDir, tfStateKey,
+			tfStateDir, tfStateKey,
 		)
 	})
 	wg.Start(func() {
@@ -121,28 +119,30 @@ func (t *Terraformer) fetchConfig(ctx context.Context) error {
 }
 
 func fetchConfigMap(ctx context.Context, log logr.Logger, c client.Client, ns, name string, optional bool, dir string, dataKeys ...string) error {
-	return fetchObject(ctx, log.WithValues("kind", "ConfigMap"), c, ns, name, &configMapStore{&corev1.ConfigMap{}}, optional, dir, dataKeys...)
+	return fetchObject(ctx, log, c, "ConfigMap", ns, name, &configMapStore{&corev1.ConfigMap{}}, optional, dir, dataKeys...)
 }
 
 func fetchSecret(ctx context.Context, log logr.Logger, c client.Client, ns, name string, optional bool, dir string, dataKeys ...string) error {
-	return fetchObject(ctx, log.WithValues("kind", "Secret"), c, ns, name, &secretStore{&corev1.Secret{}}, optional, dir, dataKeys...)
+	return fetchObject(ctx, log, c, "Secret", ns, name, &secretStore{&corev1.Secret{}}, optional, dir, dataKeys...)
 }
 
-func fetchObject(ctx context.Context, log logr.Logger, c client.Client, ns, name string, obj store, optional bool, dir string, dataKeys ...string) error {
+func fetchObject(ctx context.Context, log logr.Logger, c client.Client, kind, ns, name string, obj store, optional bool, dir string, dataKeys ...string) error {
 	key := client.ObjectKey{Namespace: ns, Name: name}
-	log = log.WithValues("object", key, "dir", dir)
-	log.Info("fetching object")
+	log = log.WithValues("kind", kind, "object", key, "dir", dir)
+	log.V(1).Info("fetching object")
 
 	if err := c.Get(ctx, key, obj.Object()); err != nil {
 		if apierrors.IsNotFound(err) && optional {
-			log.V(1).Info("object not found but optional, cleaning up dir")
+			log.V(1).Info("object not found but optional")
 
 			for _, dataKey := range dataKeys {
-				if err := os.Remove(filepath.Join(dir, dataKey)); err != nil {
-					if !os.IsNotExist(err) {
-						return err
-					}
+				filePath := filepath.Join(dir, dataKey)
+				log.V(1).Info("creating empty file / truncating existing file", "dataKey", dataKey, "file", filePath)
+				file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC, 0644)
+				if err != nil {
+					return err
 				}
+				file.Close()
 			}
 
 			return nil
@@ -152,14 +152,21 @@ func fetchObject(ctx context.Context, log logr.Logger, c client.Client, ns, name
 
 	for _, dataKey := range dataKeys {
 		if err := func() error {
-			file, err := os.OpenFile(filepath.Join(dir, dataKey), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+			filePath := filepath.Join(dir, dataKey)
+			log.V(1).Info("copying contents into file", "dataKey", dataKey, "file", filePath)
+
+			reader, err := obj.Read(dataKey)
+			if err != nil {
+				return fmt.Errorf("failed reading from %s %q: %w", kind, key, err)
+			}
+
+			file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 			if err != nil {
 				return err
 			}
 			defer file.Close()
-			log.V(1).Info("copying contents into file", "dataKey", dataKey, "file", file.Name())
 
-			_, err = io.Copy(file, obj.Read(dataKey))
+			_, err = io.Copy(file, reader)
 			return err
 		}(); err != nil {
 			return err
@@ -169,9 +176,8 @@ func fetchObject(ctx context.Context, log logr.Logger, c client.Client, ns, name
 	return nil
 }
 
-func (t *Terraformer) storeState(ctx context.Context) error {
-	log := t.stepLogger("storeState")
-	return storeConfigMap(ctx, log, t.client, t.config.Namespace, t.config.StateConfigMapName, tfStateOutDir, tfStateKey)
+func (t *Terraformer) storeState(ctx context.Context, log logr.Logger) error {
+	return storeConfigMap(ctx, log, t.client, t.config.Namespace, t.config.StateConfigMapName, tfStateDir, tfStateKey)
 }
 
 func storeConfigMap(ctx context.Context, log logr.Logger, c client.Client, ns, name string, dir string, dataKeys ...string) error {
@@ -202,7 +208,7 @@ func storeObject(ctx context.Context, log logr.Logger, c client.Client, obj stor
 				return err
 			}
 			defer file.Close()
-			log.V(1).Info("copying file contents into object", "dataKey", dataKey, "file", file.Name())
+			log.V(1).Info("copying file content into object", "dataKey", dataKey, "file", file.Name())
 
 			buf := &bytes.Buffer{}
 			_, err = io.Copy(buf, file)
@@ -219,8 +225,8 @@ func storeObject(ctx context.Context, log logr.Logger, c client.Client, obj stor
 		}
 	}
 
-	log.Info("updating object")
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	log.V(1).Info("updating object")
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		_, err := controllerutil.CreateOrUpdate(ctx, c, obj.Object(), func() error {
 			for _, f := range mutateFuncs {
 				f()
@@ -228,28 +234,30 @@ func storeObject(ctx context.Context, log logr.Logger, c client.Client, obj stor
 			return nil
 		})
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+	log.V(1).Info("successfully updated object")
+	return nil
 }
 
 func (t *Terraformer) startFileWatcher(ctx context.Context, wg *sync.WaitGroup) error {
-	wg.Add(1)
-	defer wg.Done()
-
 	log := t.stepLogger("fileWatcher")
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		log.V(1).Info("stopping file watcher")
-		_ = watcher.Close()
-	}()
 
 	go func() {
+		wg.Add(1)
+		defer wg.Done()
+
 		for {
 			select {
 			case <-ctx.Done():
+				log.V(1).Info("stopping file watcher")
+				_ = watcher.Close()
 				return
 			case event, ok := <-watcher.Events:
 				if !ok {
@@ -259,8 +267,18 @@ func (t *Terraformer) startFileWatcher(ctx context.Context, wg *sync.WaitGroup) 
 				fileLog := log.WithValues("file", event.Name)
 				fileLog.V(1).Info("received event for file", "op", event.Op.String())
 
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					fileLog.V(1).Info("attempting to update state")
+				if event.Name == tfStatePath && event.Op&fsnotify.Write == fsnotify.Write {
+					fileLog.V(1).Info("trigger storing state")
+
+					if err := func() error {
+						// run storeState in background, ctx might have been cancelled already
+						storeCtx, storeCancel := context.WithTimeout(context.Background(), continuousStateUpdateTimeout)
+						defer storeCancel()
+
+						return t.storeState(storeCtx, log)
+					}(); err != nil {
+						log.Error(err, "failed storing state after state file update")
+					}
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
@@ -271,8 +289,8 @@ func (t *Terraformer) startFileWatcher(ctx context.Context, wg *sync.WaitGroup) 
 		}
 	}()
 
-	log.Info("starting file watcher for state file", "file", tfStateOutPath)
-	if err := watcher.Add(tfStateOutPath); err != nil {
+	log.Info("starting file watcher for state file", "file", tfStatePath)
+	if err := watcher.Add(tfStatePath); err != nil {
 		return err
 	}
 

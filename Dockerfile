@@ -50,7 +50,7 @@ VOLUME /go/src/github.com/gardener/terraformer
 COPY --from=base /tmp/terraformer/terraform /bin/terraform
 COPY --from=base /tmp/terraformer/terraform-provider* /terraform-providers/
 
-COPY Makefile VERSION go.mod go.sum ./
 COPY vendor vendor
+COPY Makefile VERSION go.mod go.sum ./
 
 RUN make install-requirements

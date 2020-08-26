@@ -23,38 +23,40 @@ IMAGE_TAG            := $(VERSION)
 # Rules for local development scenarios #
 #########################################
 
-COMMAND := apply
-ZAP_DEVEL := true
+COMMAND       := apply
+ZAP_DEVEL     := true
+ZAP_LOG_LEVEL := debug
 .PHONY: run
 run:
 	# running `go run ./cmd/terraformer $(COMMAND)`
 	go run ./cmd/terraformer $(COMMAND) \
-       --zap-devel=$(ZAP_DEVEL) \
-       --configuration-configmap-name=example.infra.tf-config \
-       --state-configmap-name=example.infra.tf-state \
-       --variables-secret-name=example.infra.tf-vars
+		--zap-devel=$(ZAP_DEVEL) \
+		--zap-log-level=$(ZAP_LOG_LEVEL) \
+		--configuration-configmap-name=example.infra.tf-config \
+		--state-configmap-name=example.infra.tf-state \
+		--variables-secret-name=example.infra.tf-vars
 
 .PHONY: start
 start: dev-kubeconfig docker-dev-image
-	# starting dev container
+	# running `go run ./cmd/terraformer $(COMMAND)` in dev container
 	@docker run -it -v $(shell go env GOCACHE):/root/.cache/go-build \
-       -v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
-       -e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
-       -e NAMESPACE=${NAMESPACE} \
-       --name terraformer-dev --rm \
-       $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
-       make run COMMAND=$(COMMAND) ZAP_DEVEL=$(ZAP_DEVEL)
+		-v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
+		-e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
+		-e NAMESPACE=${NAMESPACE} \
+		--name terraformer-dev --rm \
+		$(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
+		make run COMMAND=$(COMMAND) ZAP_DEVEL=$(ZAP_DEVEL) ZAP_LOG_LEVEL=$(ZAP_LOG_LEVEL)
 
 .PHONY: start-dev-container
 start-dev-container: dev-kubeconfig docker-dev-image
 	# starting dev container
 	@docker run -it -v $(shell go env GOCACHE):/root/.cache/go-build \
-       -v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
-       -e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
-       -e NAMESPACE=${NAMESPACE} \
-       --name terraformer-dev --rm \
-       $(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
-       bash
+		-v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
+		-e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
+		-e NAMESPACE=${NAMESPACE} \
+		--name terraformer-dev --rm \
+		$(IMAGE_REPOSITORY_DEV):$(IMAGE_TAG) \
+		bash
 
 .PHONY: docker-dev-image
 docker-dev-image:

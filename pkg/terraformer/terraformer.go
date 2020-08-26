@@ -31,6 +31,11 @@ import (
 	"github.com/gardener/terraformer/pkg/utils"
 )
 
+const (
+	continuousStateUpdateTimeout = 5 * time.Minute
+	finalStateUpdateTimeout      = 5 * time.Minute
+)
+
 // NewTerraformer creates a new Terraformer
 func NewTerraformer(config *Config) *Terraformer {
 	return &Terraformer{log: runtimelog.Log, config: config}
@@ -73,32 +78,41 @@ func (t *Terraformer) execute(command Command) error {
 		return err
 	}
 
+	var fileWatcherWaitGroup sync.WaitGroup
+	// file watcher should run in background and should only be cancelled when this function returns, i.e. when any
+	// running terraform processes have finished
+	fileWatcherCtx, fileWatcherCancel := context.WithCancel(context.Background())
+
 	// always try to store state once again before exiting
 	defer func() {
+		// stop file watcher and wait for it to be done before storing state explicitly to avoid conflicts
+		fileWatcherCancel()
+		fileWatcherWaitGroup.Wait()
+
 		log := t.stepLogger("storeState")
 		log.Info("storing state before exiting")
 
-		storeCtx, storeCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		// run storeState in background, ctx might have been cancelled already
+		storeCtx, storeCancel := context.WithTimeout(context.Background(), finalStateUpdateTimeout)
 		defer storeCancel()
 
-		if err := t.storeState(storeCtx); err != nil {
+		if err := t.storeState(storeCtx, log); err != nil {
 			log.Error(err, "failed to store terraform state")
 		}
 		log.Info("successfully stored terraform state")
 	}()
 
-	fileWatcherCtx, fileWatcherCancel := context.WithCancel(ctx)
-	defer fileWatcherCancel()
-
-	var fileWatcherWaitGroup sync.WaitGroup
+	// continuously update state configmap as soon as state file changes on disk
 	if err := t.startFileWatcher(fileWatcherCtx, &fileWatcherWaitGroup); err != nil {
 		return fmt.Errorf("failed to start state file watcher: %w", err)
 	}
 
+	// initialize terraform plugins
 	if err := t.executeTerraform(Init, intCh, killCh); err != nil {
 		return fmt.Errorf("error executing terraform %s: %w", command, err)
 	}
 
+	// execute main terraform command
 	if err := t.executeTerraform(command, intCh, killCh); err != nil {
 		return fmt.Errorf("error executing terraform %s: %w", command, err)
 	}
@@ -108,10 +122,6 @@ func (t *Terraformer) execute(command Command) error {
 			return fmt.Errorf("error executing terraform %s: %w", Plan, err)
 		}
 	}
-
-	// stop file watcher and wait for it to be done before storing state explicitly
-	fileWatcherCancel()
-	fileWatcherWaitGroup.Wait()
 
 	return nil
 }
@@ -129,19 +139,16 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 	case Init:
 		args = append(args, "-plugin-dir="+tfProvidersDir)
 	case Plan:
-		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4",
-			"-detailed-exitcode", "-state="+tfStateInPath)
+		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4", "-detailed-exitcode", "-state="+tfStatePath)
 	case Apply:
-		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4", "-auto-approve",
-			"-state="+tfStateInPath, "-state-out="+tfStateOutPath)
+		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4", "-auto-approve", "-state="+tfStatePath)
 	case Destroy:
-		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4", "-auto-approve",
-			"-state="+tfStateInPath, "-state-out="+tfStateOutPath)
+		args = append(args, "-var-file="+tfVarsPath, "-parallelism=4", "-auto-approve", "-state="+tfStatePath)
 	}
 
 	args = append(args, tfConfigDir)
 
-	log.Info("executing terraform with args", "args", strings.Join(args, " "))
+	log.Info("executing terraform", "command", command, "args", strings.Join(args[1:], " "))
 	tfCmd := exec.Command("terraform", args...)
 	tfCmd.Stdout = os.Stdout
 	tfCmd.Stderr = os.Stderr
@@ -178,11 +185,11 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 	}()
 
 	if err := tfCmd.Wait(); err != nil {
-		log.Error(err, "terraform process finished with error")
+		log.Error(err, "terraform process finished with error", "command", command)
 		return utils.WithExitCode{Code: tfCmd.ProcessState.ExitCode(), Underlying: err}
 	}
 
-	log.Info("terraform process finished successfully")
+	log.Info("terraform process finished successfully", "command", command)
 	return nil
 }
 
