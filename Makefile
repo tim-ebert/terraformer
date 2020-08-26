@@ -17,7 +17,13 @@ IMAGE_REPOSITORY     := eu.gcr.io/gardener-project/gardener/$(NAME)
 IMAGE_REPOSITORY_DEV := $(IMAGE_REPOSITORY)/dev
 REPO_ROOT            := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 VERSION              := $(shell cat "$(REPO_ROOT)/VERSION")
-IMAGE_TAG            := $(VERSION)
+EFFECTIVE_VERSION    := $(VERSION)-$(shell git rev-parse HEAD)
+
+ifneq ($(strip $(shell git status --porcelain 2>/dev/null)),)
+	EFFECTIVE_VERSION := $(EFFECTIVE_VERSION)-dirty
+endif
+
+IMAGE_TAG            := $(EFFECTIVE_VERSION)
 
 #########################################
 # Rules for local development scenarios #
@@ -73,7 +79,7 @@ dev-kubeconfig:
 
 .PHONY: install
 install:
-	@LD_FLAGS="-w -X github.com/gardener/$(NAME)/pkg/version.Version=$(VERSION)" \
+	@LD_FLAGS="-w -X github.com/gardener/$(NAME)/pkg/version.Version=$(EFFECTIVE_VERSION)" \
 		$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/install.sh ./cmd/...
 
 .PHONY: build
@@ -84,6 +90,7 @@ release: build docker-login docker-push
 
 .PHONY: docker-image
 docker-image:
+	# building docker image with tag $(IMAGE_REPOSITORY):$(IMAGE_TAG)
 	@docker build -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) --rm --target terraformer .
 
 .PHONY: docker-login
