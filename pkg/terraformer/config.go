@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-logr/logr"
 	"github.com/hashicorp/go-multierror"
 	corev1 "k8s.io/api/core/v1"
@@ -232,10 +233,48 @@ func storeObject(ctx context.Context, log logr.Logger, c client.Client, obj stor
 
 func (t *Terraformer) startFileWatcher(ctx context.Context, wg *sync.WaitGroup) error {
 	wg.Add(1)
+	defer wg.Done()
+
+	log := t.stepLogger("fileWatcher")
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		log.V(1).Info("stopping file watcher")
+		_ = watcher.Close()
+	}()
 
 	go func() {
-		wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				fileLog := log.WithValues("file", event.Name)
+				fileLog.V(1).Info("received event for file", "op", event.Op.String())
+
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					fileLog.V(1).Info("attempting to update state")
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Error(err, "error while watching state file")
+			}
+		}
 	}()
+
+	log.Info("starting file watcher for state file", "file", tfStateOutPath)
+	if err := watcher.Add(tfStateOutPath); err != nil {
+		return err
+	}
 
 	return nil
 }
