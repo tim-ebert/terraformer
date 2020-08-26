@@ -27,6 +27,7 @@ spec:
     command:
     - /terraformer
     - validate
+    - --zap-log-level=info
     - --configuration-configmap-name=example.infra.tf-config
     - --state-configmap-name=example.infra.tf-state
     - --variables-secret-name=example.infra.tf-vars
@@ -34,4 +35,5 @@ spec:
       requests:
         cpu: 100m
   restartPolicy: Never
+  serviceAccountName: terraformer
   terminationGracePeriodSeconds: 600
