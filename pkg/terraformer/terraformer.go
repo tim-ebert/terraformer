@@ -22,9 +22,9 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
-	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -56,18 +56,18 @@ func (t *Terraformer) execute(command Command) error {
 		t.client = c
 	}
 
-	intCh, killCh := setupSignalChannels(t.log)
+	sigintCh := make(chan os.Signal, 1)
+	signal.Notify(sigintCh, syscall.SIGINT, syscall.SIGTERM)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
 		select {
-		case <-intCh:
-		case <-killCh:
+		case <-sigintCh:
+			t.log.Info("interrupt received")
+			cancel()
 		case <-ctx.Done():
-			return
 		}
-		cancel()
 	}()
 
 	if err := t.ensureTFDirs(); err != nil {
@@ -108,17 +108,17 @@ func (t *Terraformer) execute(command Command) error {
 	}
 
 	// initialize terraform plugins
-	if err := t.executeTerraform(Init, intCh, killCh); err != nil {
+	if err := t.executeTerraform(ctx, Init); err != nil {
 		return fmt.Errorf("error executing terraform %s: %w", command, err)
 	}
 
 	// execute main terraform command
-	if err := t.executeTerraform(command, intCh, killCh); err != nil {
+	if err := t.executeTerraform(ctx, command); err != nil {
 		return fmt.Errorf("error executing terraform %s: %w", command, err)
 	}
 
 	if command == Validate {
-		if err := t.executeTerraform(Plan, intCh, killCh); err != nil {
+		if err := t.executeTerraform(ctx, Plan); err != nil {
 			return fmt.Errorf("error executing terraform %s: %w", Plan, err)
 		}
 	}
@@ -126,7 +126,7 @@ func (t *Terraformer) execute(command Command) error {
 	return nil
 }
 
-func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan struct{}) error {
+func (t *Terraformer) executeTerraform(ctx context.Context, command Command) error {
 	// TODO: figure out, what to do with these commands:
 	//# workaround for `terraform init`; required to make `terraform validate` work (plugin_path file ignored?)
 	//cp -r "$DIR_PROVIDERS"/* "$DIR_PLUGIN_BINARIES"/.
@@ -171,15 +171,10 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 		select {
 		case <-doneCh:
 			return
-		case <-intCh:
-			log.V(1).Info("relaying SIGINT to terraform process")
-			if err := tfCmd.Process.Signal(os.Interrupt); err != nil {
-				log.Error(err, "failed to relay SIGINT to terraform process")
-			}
-		case <-killCh:
-			log.V(1).Info("relaying SIGKILL to terraform process")
-			if err := tfCmd.Process.Signal(os.Kill); err != nil {
-				log.Error(err, "failed to relay SIGKILL to terraform process")
+		case <-ctx.Done():
+			log.V(1).Info("relaying interrupt to terraform process")
+			if err := tfCmd.Process.Signal(syscall.SIGINT); err != nil {
+				log.Error(err, "failed to relay interrupt to terraform process")
 			}
 		}
 	}()
@@ -191,25 +186,4 @@ func (t *Terraformer) executeTerraform(command Command, intCh, killCh <-chan str
 
 	log.Info("terraform process finished successfully", "command", command)
 	return nil
-}
-
-func setupSignalChannels(log logr.Logger) (intCh, killCh <-chan struct{}) {
-	intOutCh, killOutCh := make(chan struct{}), make(chan struct{})
-	sigintCh, sigkillCh := make(chan os.Signal, 1), make(chan os.Signal, 1)
-	signal.Notify(sigintCh, os.Interrupt)
-	signal.Notify(sigkillCh, os.Kill)
-
-	go func() {
-		<-sigintCh
-		log.Info("SIGINT received")
-		close(intOutCh)
-	}()
-
-	go func() {
-		<-sigkillCh
-		log.Info("SIGKILL received")
-		close(killOutCh)
-	}()
-
-	return intOutCh, killOutCh
 }
