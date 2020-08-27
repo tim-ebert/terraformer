@@ -46,16 +46,12 @@ func (t *Terraformer) Run(command Command) error {
 		return fmt.Errorf("terraform command %q is not supported", command)
 	}
 
+	t.log.V(1).Info("executing terraformer with config", "config", t.config)
+
 	return t.execute(command)
 }
 
 func (t *Terraformer) execute(command Command) error {
-	if c, err := client.New(t.config.RESTConfig, client.Options{}); err != nil {
-		return fmt.Errorf("failed to create kubernetes client: %w", err)
-	} else {
-		t.client = c
-	}
-
 	sigintCh := make(chan os.Signal, 1)
 	signal.Notify(sigintCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -69,6 +65,12 @@ func (t *Terraformer) execute(command Command) error {
 		case <-ctx.Done():
 		}
 	}()
+
+	if c, err := client.New(t.config.RESTConfig, client.Options{}); err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
+	} else {
+		t.client = c
+	}
 
 	if err := t.ensureTFDirs(); err != nil {
 		return fmt.Errorf("failed to create needed directories: %w", err)

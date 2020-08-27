@@ -27,6 +27,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-logr/logr"
 	"github.com/hashicorp/go-multierror"
+	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,6 +62,21 @@ var (
 	tfVarsPath  = path.Join(tfVarsDir, tfVarsKey)
 	tfStatePath = path.Join(tfStateDir, tfStateKey)
 )
+
+// MarshalLogObject implements zapcore.ObjectMarshaler
+func (c *Config) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("configurationConfigMapName", c.ConfigurationConfigMapName)
+	enc.AddString("stateConfigMapName", c.StateConfigMapName)
+	enc.AddString("variablesSecretName", c.VariablesSecretName)
+	enc.AddString("namespace", c.Namespace)
+	return nil
+}
+
+func (c *Config) String() string {
+	configCopy := *c
+	configCopy.RESTConfig = nil
+	return fmt.Sprintf("%#v", configCopy)
+}
 
 func (t *Terraformer) ensureTFDirs() error {
 	log := t.stepLogger("ensureTFDirs")

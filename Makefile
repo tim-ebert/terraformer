@@ -44,7 +44,6 @@ run:
 
 .PHONY: start
 start: dev-kubeconfig docker-dev-image
-	# running `go run ./cmd/terraformer $(COMMAND)` in dev container
 	@docker run -it -v $(shell go env GOCACHE):/root/.cache/go-build \
 		-v $(REPO_ROOT):/go/src/github.com/gardener/terraformer \
 		-e KUBECONFIG=/go/src/github.com/gardener/terraformer/dev/kubeconfig.yaml \
@@ -71,7 +70,7 @@ docker-dev-image:
 .PHONY: dev-kubeconfig
 dev-kubeconfig:
 	@mkdir -p dev
-	@kubectl config view --raw | sed 's/localhost/host.docker.internal/' > dev/kubeconfig.yaml
+	@kubectl config view --raw | sed -E 's/127.0.0.1|localhost/host.docker.internal/' > dev/kubeconfig.yaml
 
 #################################################################
 # Rules related to binary build, Docker image build and release #
