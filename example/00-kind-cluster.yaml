@@ -1,0 +1,30 @@
+# Copyright (c) 2020 SAP SE or an SAP affiliate company. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+# this cluster config can be used to spin up a kind cluster e.g. with
+# `kind create cluster --image kindest/node:v1.18.2 --config example/00-kind-cluster.yaml`
+# It adds `host.docker.internal` to the API server cert's SANs, so it will be trusted by the the terraformer
+# when running it in the dev container against the kind cluster (`host.docker.internal` is the easiest way of
+# accessing the kind cluster from inside a docker container).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatchesJSON6902:
+- group: kubeadm.k8s.io
+  version: v1beta2
+  kind: ClusterConfiguration
+  patch: |
+    - op: add
+      path: /apiServer/certSANs/-
+      value: host.docker.internal
