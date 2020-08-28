@@ -61,6 +61,10 @@ func (o *Options) Complete() error {
 		return err
 	}
 
+	if len(namespace) == 0 {
+		namespace = corev1.NamespaceDefault
+	}
+
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return err
@@ -84,10 +88,6 @@ func (o *Options) addDefaults() {
 
 	if len(o.namespace) == 0 {
 		o.namespace = os.Getenv("NAMESPACE")
-	}
-
-	if len(o.namespace) == 0 {
-		o.namespace = corev1.NamespaceDefault
 	}
 }
 
