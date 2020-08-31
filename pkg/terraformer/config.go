@@ -124,12 +124,13 @@ func (t *Terraformer) fetchConfig(ctx context.Context) error {
 	})
 
 	go func() {
-		for err := range errCh {
-			allErrs = multierror.Append(allErrs, err)
-		}
+		defer close(errCh)
+		wg.Wait()
 	}()
 
-	wg.Wait()
+	for err := range errCh {
+		allErrs = multierror.Append(allErrs, err)
+	}
 
 	return allErrs.ErrorOrNil()
 }
