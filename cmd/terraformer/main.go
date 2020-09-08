@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 
 	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -30,10 +29,6 @@ import (
 func main() {
 	if err := exec.Command("which", "terraform").Run(); err != nil {
 		panic("terraform is not installed or not executable. cannot start terraformer.")
-	}
-
-	if len(os.Getenv("GOMAXPROCS")) == 0 {
-		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
 	if err := app.NewTerraformerCommand().Execute(); err != nil {
