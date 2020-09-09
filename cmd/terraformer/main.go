@@ -26,12 +26,23 @@ import (
 	"github.com/gardener/terraformer/pkg/utils"
 )
 
+// variables for mocking some calls in tests
+var (
+	checkTerraformPresent = func() error {
+		return exec.Command("which", "terraform").Run()
+	}
+	executeTerraformer = func() error {
+		return app.NewTerraformerCommand().Execute()
+	}
+	exit = os.Exit
+)
+
 func main() {
-	if err := exec.Command("which", "terraform").Run(); err != nil {
-		panic("terraform is not installed or not executable. cannot start terraformer.")
+	if err := checkTerraformPresent(); err != nil {
+		panic("terraform is not installed or not executable. Cannot start terraformer.")
 	}
 
-	if err := app.NewTerraformerCommand().Execute(); err != nil {
+	if err := executeTerraformer(); err != nil {
 		if log := runtimelog.Log; log.Enabled() {
 			log.Error(err, "error running terraformer")
 		} else {
@@ -42,9 +53,9 @@ func main() {
 		withExitCode := &utils.WithExitCode{}
 		if errors.As(err, withExitCode) {
 			if exitCode := withExitCode.ExitCode(); exitCode > 0 {
-				os.Exit(exitCode)
+				exit(exitCode)
 			}
 		}
-		os.Exit(1)
+		exit(1)
 	}
 }
