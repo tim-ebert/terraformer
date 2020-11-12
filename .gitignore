@@ -1,1 +1,13 @@
-.kube-secrets
+/bin
+/.kube-secrets
+/tmp
+/local
+/dev
+.terraform
+
+*.coverprofile
+*.html
+.vscode
+.idea
+.DS_Store
+*~
