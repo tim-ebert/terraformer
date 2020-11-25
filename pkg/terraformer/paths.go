@@ -50,9 +50,9 @@ func (p *PathSet) WithBaseDir(baseDir string) *PathSet {
 		ConfigDir:    filepath.Join(baseDir, p.ConfigDir),
 		VarsDir:      filepath.Join(baseDir, p.VarsDir),
 		StateDir:     filepath.Join(baseDir, p.StateDir),
-		ProvidersDir: filepath.Join(baseDir, p.ProvidersDir),
 		VarsPath:     filepath.Join(baseDir, p.VarsPath),
 		StatePath:    filepath.Join(baseDir, p.StatePath),
+		ProvidersDir: p.ProvidersDir, // providers dir is hard-coded in docker image, don't base it under baseDir
 	}
 }
 

@@ -11,19 +11,25 @@ metadata:
 spec:
   activeDeadlineSeconds: 1800
   containers:
-  - name: terraform
-    image: eu.gcr.io/gardener-project/gardener/terraformer:v2.0.0
+  - name: terraformer
+    image: eu.gcr.io/gardener-project/gardener/terraformer:v2.1.0-dev-576acc71b0716bc0c7c431cb607163d5cd8aae9b-dirty
     imagePullPolicy: IfNotPresent
+#    command:
+#    - /terraformer
+#    - apply
+#    - --zap-log-level=debug
+#    - --configuration-configmap-name=example.infra.tf-config
+#    - --state-configmap-name=example.infra.tf-state
+#    - --variables-secret-name=example.infra.tf-vars
     command:
-    - /terraformer
-    - apply
-    - --zap-log-level=info
-    - --configuration-configmap-name=example.infra.tf-config
-    - --state-configmap-name=example.infra.tf-state
-    - --variables-secret-name=example.infra.tf-vars
+      - sh
+      - -c
+      - "while true; do sleep 2; done"
     resources:
       requests:
         cpu: 100m
+    securityContext:
+      runAsUser: 1001
   restartPolicy: Never
   serviceAccountName: terraformer
   terminationGracePeriodSeconds: 600

@@ -37,7 +37,10 @@ FROM eu.gcr.io/gardener-project/3rd/alpine:3.12.1 AS terraformer
 
 RUN apk add --update bash curl tzdata
 
-WORKDIR /
+RUN mkdir -m 666 /.terraform
+
+USER 1001:1001
+WORKDIR /tf
 
 ENV TF_DEV=true
 ENV TF_RELEASE=true

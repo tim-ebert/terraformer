@@ -77,6 +77,10 @@ func (o *Options) addDefaults() {
 	if len(o.namespace) == 0 {
 		o.namespace = os.Getenv("NAMESPACE")
 	}
+
+	if len(o.baseDir) == 0 {
+		o.baseDir = "/tf"
+	}
 }
 
 func (o *Options) validate() error {
@@ -100,7 +104,7 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.configurationConfigMapName, "configuration-configmap-name", "", "Name of the ConfigMap that holds the main.tf and variables.tf files")
 	fs.StringVar(&o.stateConfigMapName, "state-configmap-name", "", "Name of the ConfigMap that the terraform.tfstate file should be stored in")
 	fs.StringVar(&o.variablesSecretName, "variables-secret-name", "", "Name of the Secret that holds the terraform.tfvars file")
-	fs.StringVar(&o.baseDir, "base-dir", "", "Base directory to be used for all terraform files (defaults to '/')")
+	fs.StringVar(&o.baseDir, "base-dir", "", "Base directory to be used for all terraform files (defaults to '/tf')")
 }
 
 // Completed returns the completed terraformer.Config

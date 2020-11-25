@@ -237,8 +237,8 @@ func waitForPod(ctx context.Context, pod *corev1.Pod, timeout time.Duration) err
 
 	podLog := log.WithValues("pod", testutils.ObjectKeyFromObject(pod))
 
+	podLog.Info("waiting for terraformer pod to be completed...")
 	err := wait.PollUntil(5*time.Second, func() (done bool, err error) {
-		podLog.Info("waiting for terraformer pod to be completed...")
 		err = testClient.Get(pollCtx, testutils.ObjectKeyFromObject(pod), pod)
 		if apierrors.IsNotFound(err) {
 			podLog.Info("terraformer pod disappeared unexpectedly, somebody must have manually deleted it")
